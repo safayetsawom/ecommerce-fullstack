@@ -2,8 +2,14 @@ import os
 import pytest
 
 # Must be set BEFORE importing app.config / app.database
-os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:2306@localhost:5432/ecommerce_test"
-os.environ["SECRET_KEY"] = "supersecretkey"
+# os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:2306@localhost:5432/ecommerce_test"
+# os.environ["SECRET_KEY"] = "supersecretkey"
+
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+psycopg://postgres:2306@localhost:5432/ecommerce_test",
+)
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
