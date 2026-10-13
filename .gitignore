@@ -1,7 +1,8 @@
-﻿backend/.env
-@"
-.venv/
+﻿.venv/
 __pycache__/
 *.pyc
 .env
-"@ | Out-File -Encoding utf8 .gitignore
+.DS_Store
+node_modules/
+dist/
+.pytest_cache/
