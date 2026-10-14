@@ -17,19 +17,19 @@ Built as a portfolio project to demonstrate full-stack engineering: clean API de
 ![Products](docs/products.png)
 
 ### Product detail
-![Product detail](docs/products1.png)
+![Product detail](docs/product-detail.png)
 
 ### Admin — add product
-![Admin add product](docs/products_add.png)
+![Admin add product](docs/products-add.png)
 
 ### Cart & checkout
 ![Checkout](docs/checkout.png)
 
 ### Order confirmation
-![Order confirmation](docs/order%20confirm.png)
+![Order confirmation](docs/order-confirm.png)
 
 ### Admin — orders
-![Admin orders](docs/admin_order_list.png)
+![Admin orders](docs/admin-orders.png)
 
 ## Features
 
