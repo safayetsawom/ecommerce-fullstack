@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import { Button, Card, Input } from '../components/ui'
 
 export default function Register() {
   const { login } = useAuth()
@@ -10,7 +9,6 @@ export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -23,8 +21,8 @@ export default function Register() {
         email,
         password,
         full_name: fullName || null,
-        phone: phone || null,
       })
+      // auto-login
       await login(email, password)
       navigate('/')
     } catch (err) {
@@ -35,68 +33,46 @@ export default function Register() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <Card className="p-8">
-        <h1 className="text-2xl font-bold text-gray-900">Create your account</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Start shopping in under a minute.
-        </p>
-
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <Input
-            label="Email"
+    <div style={{ maxWidth: 400, margin: '40px auto', padding: 24, background: '#fff' }}>
+      <h2>Register</h2>
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: 12 }}>
+          <label>Email</label>
+          <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            autoComplete="email"
-            placeholder="you@example.com"
+            style={{ width: '100%', padding: 8 }}
           />
-          <Input
-            label="Full name (optional)"
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label>Full name (optional)</label>
+          <input
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            autoComplete="name"
-            placeholder="Jane Doe"
+            style={{ width: '100%', padding: 8 }}
           />
-          <Input
-            label="Phone (optional)"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            autoComplete="tel"
-            placeholder="+8801700000000"
-            hint="Digits only, optional leading +."
-          />
-          <Input
-            label="Password"
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label>Password (min 6 chars)</label>
+          <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={6}
-            autoComplete="new-password"
-            placeholder="At least 6 characters"
+            style={{ width: '100%', padding: 8 }}
           />
-
-          {error && (
-            <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <Button type="submit" disabled={busy} className="w-full">
-            {busy ? 'Creating account...' : 'Create account'}
-          </Button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-gray-600">
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
-            Sign in
-          </Link>
-        </p>
-      </Card>
+        </div>
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        <button type="submit" disabled={busy} style={{ padding: '8px 16px' }}>
+          {busy ? 'Creating...' : 'Register'}
+        </button>
+      </form>
+      <p style={{ marginTop: 16 }}>
+        Have an account? <Link to="/login">Login</Link>
+      </p>
     </div>
   )
 }

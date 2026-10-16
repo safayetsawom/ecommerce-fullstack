@@ -19,6 +19,7 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 GUEST_HEADER = "X-Guest-Token"
 
+
 def _serialize_order(order: Order) -> dict:
     items = []
     for item in order.items:
@@ -34,13 +35,15 @@ def _serialize_order(order: Order) -> dict:
         "id": order.id,
         "user_id": order.user_id,
         "guest_email": order.guest_email,
-        "shipping_phone": order.shipping_phone,
+        "guest_phone": order.guest_phone,
         "status": order.status,
         "total_price": order.total_price,
         "shipping_address": order.shipping_address,
         "created_at": order.created_at,
         "items": items,
     }
+
+
 def _has_enough_stock(product: Product, qty: int) -> bool:
     if product.is_unlimited_stock:
         return True
@@ -54,9 +57,10 @@ def _checkout(
     user_id: Optional[int],
     guest_token: Optional[str],
     guest_email: Optional[str],
-    shipping_phone: str,
+    guest_phone: Optional[str],
     shipping_address: str,
 ) -> Order:
+    # Pre-check stock
     for item in cart_items:
         product = db.query(Product).filter(Product.id == item.product_id).first()
         if not product or not product.is_active:
@@ -71,7 +75,7 @@ def _checkout(
         user_id=user_id,
         guest_token=guest_token,
         guest_email=guest_email,
-        shipping_phone=shipping_phone,
+        guest_phone=guest_phone,
         status="pending",
         total_price=Decimal("0"),
         shipping_address=shipping_address,
@@ -84,6 +88,7 @@ def _checkout(
         product = db.query(Product).filter(Product.id == item.product_id).first()
         subtotal = product.price * item.quantity
         total += subtotal
+
         db.add(OrderItem(
             order_id=order.id,
             product_id=product.id,
@@ -91,11 +96,13 @@ def _checkout(
             unit_price=product.price,
             quantity=item.quantity,
         ))
+
         if not product.is_unlimited_stock:
             product.stock -= item.quantity
 
     order.total_price = total
 
+    # Clear the cart
     if user_id is not None:
         db.query(CartItem).filter(CartItem.user_id == user_id).delete(synchronize_session=False)
     else:
@@ -104,6 +111,8 @@ def _checkout(
     db.commit()
     db.refresh(order)
     return order
+
+
 @router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 def create_order(
     payload: OrderCreate,
@@ -120,7 +129,7 @@ def create_order(
         user_id=user.id,
         guest_token=None,
         guest_email=None,
-        shipping_phone=payload.shipping_phone,
+        guest_phone=None,
         shipping_address=payload.shipping_address,
     )
     return _serialize_order(order)
@@ -141,10 +150,11 @@ def create_guest_order(
         user_id=None,
         guest_token=payload.guest_token,
         guest_email=payload.guest_email,
-        shipping_phone=payload.shipping_phone,
+        guest_phone=payload.guest_phone,
         shipping_address=payload.shipping_address,
     )
     return _serialize_order(order)
+
 
 @router.get("/guest/{guest_token}", response_model=OrderOut)
 def get_guest_order(guest_token: str, db: Session = Depends(get_db)):

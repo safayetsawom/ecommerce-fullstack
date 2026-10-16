@@ -9,7 +9,7 @@ from app.models.cart import CartItem
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemUpdate, CartOut, GuestCartCreate
-from app.core.security import decode_access_token
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
@@ -22,8 +22,19 @@ def has_enough_stock(product: Product, requested_qty: int) -> bool:
     return product.stock >= requested_qty
 
 
-def _get_owner(db: Session, token: Optional[str], guest_token: Optional[str]) -> dict:
+def _get_owner(
+    db: Session,
+    token: Optional[str],
+    guest_token: Optional[str],
+) -> dict:
+    """
+    Returns {'user_id': X, 'guest_token': None} for authed users,
+    or {'user_id': None, 'guest_token': Y} for guests.
+    Raises 401 if neither is present.
+    """
     if token:
+        # Resolve user from token
+        from app.core.security import decode_access_token
         payload = decode_access_token(token)
         if payload is None:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -43,12 +54,6 @@ def _owner_filter(query, owner: dict):
     return query.filter(CartItem.guest_token == owner["guest_token"])
 
 
-def _extract_token(authorization: Optional[str]) -> Optional[str]:
-    if authorization and authorization.lower().startswith("bearer "):
-        return authorization.split(" ", 1)[1]
-    return None
-
-
 def _build_cart(db: Session, owner: dict) -> dict:
     q = db.query(CartItem)
     q = _owner_filter(q, owner)
@@ -66,7 +71,6 @@ def _build_cart(db: Session, owner: dict) -> dict:
             "id": item.id,
             "product_id": item.product_id,
             "product_name": item.product.name,
-            "product_image_url": item.product.image_url,
             "unit_price": item.product.price,
             "quantity": item.quantity,
             "subtotal": subtotal,
@@ -78,6 +82,7 @@ def _build_cart(db: Session, owner: dict) -> dict:
 
 @router.post("/guest", response_model=GuestCartCreate, status_code=status.HTTP_201_CREATED)
 def create_guest_cart():
+    """Generate a fresh guest token. Client stores it and sends it as X-Guest-Token."""
     return {"guest_token": uuid.uuid4().hex}
 
 
@@ -87,7 +92,10 @@ def get_cart(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
     return _build_cart(db, owner)
 
 
@@ -98,15 +106,18 @@ def add_to_cart(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
 
     product = db.query(Product).filter(Product.id == payload.product_id).first()
     if not product or not product.is_active:
         raise HTTPException(status_code=404, detail="Product not available")
 
-    existing = _owner_filter(
-        db.query(CartItem), owner
-    ).filter(CartItem.product_id == product.id).first()
+    existing_q = db.query(CartItem)
+    existing_q = _owner_filter(existing_q, owner).filter(CartItem.product_id == product.id)
+    existing = existing_q.first()
 
     new_qty = payload.quantity + (existing.quantity if existing else 0)
     if not has_enough_stock(product, new_qty):
@@ -133,11 +144,14 @@ def update_cart_item(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
 
-    item = _owner_filter(
-        db.query(CartItem), owner
-    ).filter(CartItem.id == item_id).first()
+    q = db.query(CartItem)
+    q = _owner_filter(q, owner).filter(CartItem.id == item_id)
+    item = q.first()
     if not item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
@@ -156,11 +170,14 @@ def remove_cart_item(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
 
-    item = _owner_filter(
-        db.query(CartItem), owner
-    ).filter(CartItem.id == item_id).first()
+    q = db.query(CartItem)
+    q = _owner_filter(q, owner).filter(CartItem.id == item_id)
+    item = q.first()
     if not item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
@@ -175,7 +192,13 @@ def clear_cart(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
-    _owner_filter(db.query(CartItem), owner).delete(synchronize_session=False)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
+
+    q = db.query(CartItem)
+    q = _owner_filter(q, owner)
+    q.delete(synchronize_session=False)
     db.commit()
     return None
