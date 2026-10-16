@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal
 import uuid
 from typing import Optional
@@ -7,6 +7,8 @@ from typing import Optional
 from app.database import get_db
 from app.models.cart import CartItem
 from app.models.product import Product
+from app.models.product_variant import ProductVariant, ProductVariantOptionValue
+from app.models.product_option import ProductOptionValue, ProductOption
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemUpdate, CartOut, GuestCartCreate
 from app.core.security import decode_access_token
@@ -16,10 +18,10 @@ router = APIRouter(prefix="/cart", tags=["cart"])
 GUEST_HEADER = "X-Guest-Token"
 
 
-def has_enough_stock(product: Product, requested_qty: int) -> bool:
+def has_enough_stock(product: Product, variant: ProductVariant, requested_qty: int) -> bool:
     if product.is_unlimited_stock:
         return True
-    return product.stock >= requested_qty
+    return variant.stock >= requested_qty
 
 
 def _get_owner(db: Session, token: Optional[str], guest_token: Optional[str]) -> dict:
@@ -49,8 +51,26 @@ def _extract_token(authorization: Optional[str]) -> Optional[str]:
     return None
 
 
+def _variant_options_text(variant: ProductVariant) -> str:
+    """Build a human-readable label like 'M / Black' from a variant's option values."""
+    pairs = []
+    for link in variant.option_values:
+        ov = link.option_value
+        opt = ov.option
+        pairs.append((opt.position, ov.value))
+    pairs.sort(key=lambda x: x[0])
+    return " / ".join(v for _, v in pairs) if pairs else "Default"
+
+
 def _build_cart(db: Session, owner: dict) -> dict:
-    q = db.query(CartItem)
+    q = db.query(CartItem).options(
+        joinedload(CartItem.variant)
+            .joinedload(ProductVariant.product),
+        joinedload(CartItem.variant)
+            .joinedload(ProductVariant.option_values)
+            .joinedload(ProductVariantOptionValue.option_value)
+            .joinedload(ProductOptionValue.option),
+    )
     q = _owner_filter(q, owner)
     items = q.order_by(CartItem.id).all()
 
@@ -59,15 +79,19 @@ def _build_cart(db: Session, owner: dict) -> dict:
     total_items = 0
 
     for item in items:
-        subtotal = item.product.price * item.quantity
+        variant = item.variant
+        product = variant.product
+        subtotal = product.price * item.quantity
         total_price += subtotal
         total_items += item.quantity
         out_items.append({
             "id": item.id,
-            "product_id": item.product_id,
-            "product_name": item.product.name,
-            "product_image_url": item.product.image_url,
-            "unit_price": item.product.price,
+            "variant_id": variant.id,
+            "product_id": product.id,
+            "product_name": product.name,
+            "product_image_url": product.image_url,
+            "options_text": _variant_options_text(variant),
+            "unit_price": product.price,
             "quantity": item.quantity,
             "subtotal": subtotal,
             "added_at": item.added_at,
@@ -100,17 +124,22 @@ def add_to_cart(
 ):
     owner = _get_owner(db, _extract_token(authorization), x_guest_token)
 
-    product = db.query(Product).filter(Product.id == payload.product_id).first()
-    if not product or not product.is_active:
-        raise HTTPException(status_code=404, detail="Product not available")
+    variant = (
+        db.query(ProductVariant)
+        .options(joinedload(ProductVariant.product))
+        .filter(ProductVariant.id == payload.variant_id)
+        .first()
+    )
+    if not variant or not variant.product.is_active or not variant.is_active:
+        raise HTTPException(status_code=404, detail="Variant not available")
 
     existing = _owner_filter(
         db.query(CartItem), owner
-    ).filter(CartItem.product_id == product.id).first()
+    ).filter(CartItem.variant_id == variant.id).first()
 
     new_qty = payload.quantity + (existing.quantity if existing else 0)
-    if not has_enough_stock(product, new_qty):
-        raise HTTPException(status_code=400, detail=f"Only {product.stock} in stock")
+    if not has_enough_stock(variant.product, variant, new_qty):
+        raise HTTPException(status_code=400, detail=f"Only {variant.stock} in stock")
 
     if existing:
         existing.quantity = new_qty
@@ -118,7 +147,7 @@ def add_to_cart(
         db.add(CartItem(
             user_id=owner["user_id"],
             guest_token=owner["guest_token"],
-            product_id=product.id,
+            variant_id=variant.id,
             quantity=payload.quantity,
         ))
     db.commit()
@@ -135,14 +164,19 @@ def update_cart_item(
 ):
     owner = _get_owner(db, _extract_token(authorization), x_guest_token)
 
-    item = _owner_filter(
-        db.query(CartItem), owner
-    ).filter(CartItem.id == item_id).first()
+    item = (
+        _owner_filter(db.query(CartItem), owner)
+        .options(
+            joinedload(CartItem.variant).joinedload(ProductVariant.product)
+        )
+        .filter(CartItem.id == item_id)
+        .first()
+    )
     if not item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
-    if not has_enough_stock(item.product, payload.quantity):
-        raise HTTPException(status_code=400, detail=f"Only {item.product.stock} in stock")
+    if not has_enough_stock(item.variant.product, item.variant, payload.quantity):
+        raise HTTPException(status_code=400, detail=f"Only {item.variant.stock} in stock")
 
     item.quantity = payload.quantity
     db.commit()
@@ -158,9 +192,7 @@ def remove_cart_item(
 ):
     owner = _get_owner(db, _extract_token(authorization), x_guest_token)
 
-    item = _owner_filter(
-        db.query(CartItem), owner
-    ).filter(CartItem.id == item_id).first()
+    item = _owner_filter(db.query(CartItem), owner).filter(CartItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 

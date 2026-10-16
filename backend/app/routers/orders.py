@@ -8,6 +8,8 @@ from app.database import get_db
 from app.models.order import Order, OrderItem
 from app.models.cart import CartItem
 from app.models.product import Product
+from app.models.product_variant import ProductVariant, ProductVariantOptionValue
+from app.models.product_option import ProductOptionValue
 from app.models.user import User
 from app.schemas.order import (
     OrderCreate, GuestOrderCreate, OrderOut, OrderStatusUpdate,
@@ -19,13 +21,27 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 GUEST_HEADER = "X-Guest-Token"
 
+
+def _variant_options_text(variant: ProductVariant) -> str:
+    """Build a snapshot label like 'M / Black' from a variant's option values."""
+    pairs = []
+    for link in variant.option_values:
+        ov = link.option_value
+        opt = ov.option
+        pairs.append((opt.position, ov.value))
+    pairs.sort(key=lambda x: x[0])
+    return " / ".join(v for _, v in pairs) if pairs else "Default"
+
+
 def _serialize_order(order: Order) -> dict:
     items = []
     for item in order.items:
         items.append({
             "id": item.id,
             "product_id": item.product_id,
+            "variant_id": item.variant_id,
             "product_name": item.product_name,
+            "options_text": item.options_text,
             "unit_price": item.unit_price,
             "quantity": item.quantity,
             "subtotal": item.unit_price * item.quantity,
@@ -41,10 +57,12 @@ def _serialize_order(order: Order) -> dict:
         "created_at": order.created_at,
         "items": items,
     }
-def _has_enough_stock(product: Product, qty: int) -> bool:
+
+
+def _has_enough_stock(product: Product, variant: ProductVariant, qty: int) -> bool:
     if product.is_unlimited_stock:
         return True
-    return product.stock >= qty
+    return variant.stock >= qty
 
 
 def _checkout(
@@ -57,16 +75,30 @@ def _checkout(
     shipping_phone: str,
     shipping_address: str,
 ) -> Order:
+    """
+    Atomic order creation:
+      1. Re-validate stock for every cart item.
+      2. Create the Order + OrderItem rows (snapshotting name/options/price).
+      3. Decrement variant stock.
+      4. Clear the cart.
+    All in one transaction — if anything fails, nothing is written.
+    """
+    # 1. Stock validation
     for item in cart_items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
-        if not product or not product.is_active:
-            raise HTTPException(status_code=400, detail=f"Product {item.product_id} unavailable")
-        if not _has_enough_stock(product, item.quantity):
+        variant = item.variant
+        product = variant.product
+        if not product.is_active or not variant.is_active:
             raise HTTPException(
                 status_code=400,
-                detail=f"Only {product.stock} of '{product.name}' in stock",
+                detail=f"'{product.name}' ({_variant_options_text(variant)}) is no longer available",
+            )
+        if not _has_enough_stock(product, variant, item.quantity):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only {variant.stock} of '{product.name}' ({_variant_options_text(variant)}) in stock",
             )
 
+    # 2. Create order
     order = Order(
         user_id=user_id,
         guest_token=guest_token,
@@ -77,25 +109,32 @@ def _checkout(
         shipping_address=shipping_address,
     )
     db.add(order)
-    db.flush()
+    db.flush()  # assigns order.id
 
     total = Decimal("0")
     for item in cart_items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
+        variant = item.variant
+        product = variant.product
         subtotal = product.price * item.quantity
         total += subtotal
+
         db.add(OrderItem(
             order_id=order.id,
             product_id=product.id,
+            variant_id=variant.id,
             product_name=product.name,
-            unit_price=product.price,
+            options_text=_variant_options_text(variant),   # snapshot
+            unit_price=product.price,                       # snapshot
             quantity=item.quantity,
         ))
+
+        # 3. Decrement variant stock
         if not product.is_unlimited_stock:
-            product.stock -= item.quantity
+            variant.stock -= item.quantity
 
     order.total_price = total
 
+    # 4. Clear cart
     if user_id is not None:
         db.query(CartItem).filter(CartItem.user_id == user_id).delete(synchronize_session=False)
     else:
@@ -104,13 +143,27 @@ def _checkout(
     db.commit()
     db.refresh(order)
     return order
+
+
 @router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
 def create_order(
     payload: OrderCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    cart_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
+    cart_items = (
+        db.query(CartItem)
+        .options(
+            joinedload(CartItem.variant)
+                .joinedload(ProductVariant.product),
+            joinedload(CartItem.variant)
+                .joinedload(ProductVariant.option_values)
+                .joinedload(ProductVariantOptionValue.option_value)
+                .joinedload(ProductOptionValue.option),
+        )
+        .filter(CartItem.user_id == user.id)
+        .all()
+    )
     if not cart_items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
@@ -131,7 +184,19 @@ def create_guest_order(
     payload: GuestOrderCreate,
     db: Session = Depends(get_db),
 ):
-    cart_items = db.query(CartItem).filter(CartItem.guest_token == payload.guest_token).all()
+    cart_items = (
+        db.query(CartItem)
+        .options(
+            joinedload(CartItem.variant)
+                .joinedload(ProductVariant.product),
+            joinedload(CartItem.variant)
+                .joinedload(ProductVariant.option_values)
+                .joinedload(ProductVariantOptionValue.option_value)
+                .joinedload(ProductOptionValue.option),
+        )
+        .filter(CartItem.guest_token == payload.guest_token)
+        .all()
+    )
     if not cart_items:
         raise HTTPException(status_code=400, detail="Guest cart is empty or token invalid")
 
@@ -145,6 +210,7 @@ def create_guest_order(
         shipping_address=payload.shipping_address,
     )
     return _serialize_order(order)
+
 
 @router.get("/guest/{guest_token}", response_model=OrderOut)
 def get_guest_order(guest_token: str, db: Session = Depends(get_db)):

@@ -7,6 +7,7 @@ import re
 VALID_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled"]
 PHONE_REGEX = r"^\+?[0-9]{7,15}$"
 
+
 def _normalize_phone(v: str) -> str:
     digits_only = re.sub(r"[\s\-()]", "", v)
     if not re.match(PHONE_REGEX, digits_only):
@@ -26,7 +27,7 @@ class OrderCreate(BaseModel):
 
 class GuestOrderCreate(BaseModel):
     guest_token: str = Field(min_length=8, max_length=64)
-    guest_email: EmailStr
+    guest_email: Optional[EmailStr] = None
     shipping_phone: str
     shipping_address: str = Field(min_length=5, max_length=500)
 
@@ -39,12 +40,12 @@ class GuestOrderCreate(BaseModel):
 class OrderItemOut(BaseModel):
     id: int
     product_id: Optional[int]
+    variant_id: Optional[int]
     product_name: str
+    options_text: Optional[str]
     unit_price: Decimal
     quantity: int
     subtotal: Decimal
-
-    model_config = {"from_attributes": True}
 
 
 class OrderOut(BaseModel):

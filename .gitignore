@@ -7,3 +7,4 @@ node_modules/
 dist/
 .pytest_cache/
 *.sql
+backup_before_variants.sql
