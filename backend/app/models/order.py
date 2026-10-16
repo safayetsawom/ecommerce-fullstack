@@ -17,7 +17,8 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     guest_token = Column(String(64), nullable=True, index=True, unique=True)
     guest_email = Column(String, nullable=True)
-    guest_phone = Column(String, nullable=True)
+
+    shipping_phone = Column(String, nullable=False)          # ← was guest_phone, now required
 
     status = Column(String, nullable=False, default="pending", index=True)
     total_price = Column(Numeric(10, 2), nullable=False)
@@ -27,7 +28,6 @@ class Order(Base):
 
     user = relationship("User")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
-
 
 class OrderItem(Base):
     __tablename__ = "order_items"

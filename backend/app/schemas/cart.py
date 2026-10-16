@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 class CartItemAdd(BaseModel):
@@ -14,6 +14,7 @@ class CartItemOut(BaseModel):
     id: int
     product_id: int
     product_name: str
+    product_image_url: Optional[str] = None
     unit_price: Decimal
     quantity: int
     subtotal: Decimal
@@ -25,5 +26,4 @@ class CartOut(BaseModel):
     total_price: Decimal
 
 class GuestCartCreate(BaseModel):
-    """Returned to the client the first time they act as a guest."""
     guest_token: str

@@ -10,6 +10,7 @@ class ProductCreate(BaseModel):
     stock: int = Field(ge=0, default=0)
     category_id: int
     is_unlimited_stock: bool = False
+    image_url: Optional[str] = Field(default=None, max_length=500)
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -19,6 +20,7 @@ class ProductUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_unlimited_stock: Optional[bool] = None
     category_id: Optional[int] = None
+    image_url: Optional[str] = Field(default=None, max_length=500)
 
 class ProductOut(BaseModel):
     id: int
@@ -28,6 +30,7 @@ class ProductOut(BaseModel):
     stock: int
     is_active: bool
     is_unlimited_stock: bool
+    image_url: Optional[str]
     category_id: int
     created_at: datetime
 

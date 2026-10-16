@@ -22,13 +22,13 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         email=user_in.email,
         hashed_password=hash_password(user_in.password),
         full_name=user_in.full_name,
+        phone=user_in.phone,
         role="customer",
     )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
-
 
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

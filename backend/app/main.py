@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from app import models  # noqa: F401
-from app.routers import auth, categories, products, cart, orders
 from app.database import engine
+from app import models  # noqa: F401
+from app.routers import auth, categories, products, cart, orders, uploads
 
 app = FastAPI(title="E-Commerce API", version="0.1.0")
 
@@ -20,12 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 app.include_router(auth.router)
 app.include_router(categories.router)
 app.include_router(products.router)
 app.include_router(cart.router)
 app.include_router(orders.router)
+app.include_router(uploads.router)
 
 @app.get("/")
 def root():
