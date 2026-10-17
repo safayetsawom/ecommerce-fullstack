@@ -1,22 +1,21 @@
 import os
 import pytest
 
-# Must be set BEFORE importing app.config / app.database
-# os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:2306@localhost:5432/ecommerce_test"
-# os.environ["SECRET_KEY"] = "supersecretkey"
-
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+psycopg://postgres:2306@localhost:5432/ecommerce_test",
 )
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("CLOUDINARY_CLOUD_NAME", "test-cloud")
+os.environ.setdefault("CLOUDINARY_API_KEY", "test-key")
+os.environ.setdefault("CLOUDINARY_API_SECRET", "test-secret")
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
-from app import models  # noqa: F401  — register models on Base
+from app import models  # noqa: F401
 from app.main import app
 from app.core.security import hash_password
 from app.models.user import User
@@ -29,7 +28,6 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(autouse=True)
 def reset_db():
-    """Drop and recreate all tables before every test."""
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
@@ -37,7 +35,6 @@ def reset_db():
 
 @pytest.fixture
 def db():
-    """A DB session for tests that need to write directly."""
     session = TestingSessionLocal()
     try:
         yield session
@@ -47,7 +44,6 @@ def db():
 
 @pytest.fixture
 def client(db):
-    """TestClient with get_db overridden to use the test session."""
     def override_get_db():
         try:
             yield db
@@ -62,7 +58,6 @@ def client(db):
 
 @pytest.fixture
 def admin_user(db):
-    """Create and return an admin user (also commits it)."""
     user = User(
         email="admin@test.com",
         hashed_password=hash_password("adminpass"),
@@ -77,7 +72,6 @@ def admin_user(db):
 
 @pytest.fixture
 def customer_user(db):
-    """Create and return a normal customer."""
     user = User(
         email="customer@test.com",
         hashed_password=hash_password("customerpass"),
@@ -92,7 +86,6 @@ def customer_user(db):
 
 @pytest.fixture
 def admin_token(client, admin_user):
-    """Log in as admin and return the bearer token."""
     res = client.post("/auth/login", data={
         "username": admin_user.email,
         "password": "adminpass",
@@ -117,3 +110,41 @@ def admin_headers(admin_token):
 @pytest.fixture
 def customer_headers(customer_token):
     return {"Authorization": f"Bearer {customer_token}"}
+
+
+# ---------- shared product + variant fixtures ----------
+
+@pytest.fixture
+def category(db):
+    from app.models.category import Category
+    c = Category(name="Test Cat", slug="test-cat")
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return c
+
+
+@pytest.fixture
+def product(db, category):
+    """
+    A product with no options and one default variant carrying stock=5.
+    """
+    from app.models.product import Product
+    from app.models.product_variant import ProductVariant
+
+    p = Product(name="Thing", price="10.00", category_id=category.id)
+    db.add(p)
+    db.flush()
+
+    v = ProductVariant(product_id=p.id, stock=5, is_active=True)
+    db.add(v)
+    db.commit()
+    db.refresh(p)
+    db.refresh(v)
+    return p
+
+
+@pytest.fixture
+def variant(db, product):
+    from app.models.product_variant import ProductVariant
+    return db.query(ProductVariant).filter(ProductVariant.product_id == product.id).first()

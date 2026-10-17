@@ -13,6 +13,7 @@ from app.models.product_variant import ProductVariant, ProductVariantOptionValue
 from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductOut, PaginatedProducts,
     ProductOptionIn,
+    VariantStockUpdate, BulkVariantStockUpdate,
 )
 from app.routers.auth import get_current_admin
 
@@ -71,22 +72,16 @@ def _apply_options(product: Product, options_in: list[ProductOptionIn]) -> None:
       - Existing variants that match a generated combination keep their stock.
       - A product with NO options gets exactly one default variant.
     """
-    # Snapshot existing stock keyed by the set of option-value strings,
-    # so we can preserve it across the regeneration.
     existing_stock: dict[tuple[str, ...], int] = {}
     for v in product.variants:
         key = tuple(sorted(link.option_value.value for link in v.option_values))
         existing_stock[key] = v.stock
 
-    # Wipe old options (cascades to values, and to variant-option-value links)
     for old in list(product.options):
         product.options.remove(old)
-
-    # Wipe old variants too — they'll be regenerated
     for old in list(product.variants):
         product.variants.remove(old)
 
-    # We need ids for options before creating variants — flush after inserting
     new_options = []
     for opt_in in options_in:
         opt = ProductOption(name=opt_in.name, position=opt_in.position)
@@ -95,12 +90,10 @@ def _apply_options(product: Product, options_in: list[ProductOptionIn]) -> None:
         product.options.append(opt)
         new_options.append(opt)
 
-    # No options → create one default variant
     if not new_options:
         product.variants.append(ProductVariant(stock=existing_stock.get((), 0), is_active=True))
         return
 
-    # Cartesian product of every option's values
     value_lists = [list(opt.values) for opt in new_options]
     for combo in cartesian_product(*value_lists):
         key = tuple(sorted(v.value for v in combo))
@@ -225,14 +218,12 @@ def update_product(
         if not category:
             raise HTTPException(status_code=400, detail="Category does not exist")
 
-    # Options are handled separately — they trigger variant regeneration
     options_update = updates.pop("options", None)
 
     for field, value in updates.items():
         setattr(product, field, value)
 
     if options_update is not None:
-        # Convert plain dicts back to pydantic models
         parsed = [ProductOptionIn(**o) for o in options_update]
         _apply_options(product, parsed)
 
@@ -261,3 +252,73 @@ def delete_product(
             detail="Cannot delete this product — it appears in existing orders. Use 'Hide' to deactivate it instead.",
         )
     return None
+
+
+# ---------- Admin: variant management ----------
+
+@router.patch(
+    "/{product_id}/variants/{variant_id}",
+    response_model=ProductOut,
+)
+def update_variant(
+    product_id: int,
+    variant_id: int,
+    payload: VariantStockUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """Update a single variant's stock (and optionally is_active)."""
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    variant = (
+        db.query(ProductVariant)
+        .filter(ProductVariant.id == variant_id, ProductVariant.product_id == product_id)
+        .first()
+    )
+    if not variant:
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    variant.stock = payload.stock
+    if payload.is_active is not None:
+        variant.is_active = payload.is_active
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_product(product)
+
+
+@router.patch(
+    "/{product_id}/variants",
+    response_model=ProductOut,
+)
+def bulk_update_variants(
+    product_id: int,
+    payload: BulkVariantStockUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    """
+    Bulk update stock/is_active for many variants at once.
+    Useful for the admin grid that shows every variant as an editable row.
+    """
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    variant_map = {v.id: v for v in product.variants}
+
+    for item in payload.variants:
+        v = variant_map.get(item.variant_id)
+        if not v:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Variant {item.variant_id} does not belong to product {product_id}",
+            )
+        v.stock = item.stock
+        v.is_active = item.is_active
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_product(product)

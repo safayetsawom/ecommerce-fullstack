@@ -4,6 +4,7 @@ from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductOut, PaginatedProducts,
     ProductOptionIn, ProductOptionOut, ProductOptionValueIn, ProductOptionValueOut,
     ProductVariantOut,
+    VariantStockUpdate, BulkVariantItem, BulkVariantStockUpdate,
 )
 from app.schemas.cart import CartItemAdd, CartItemUpdate, CartItemOut, CartOut, GuestCartCreate
 from app.schemas.order import (
@@ -17,6 +18,7 @@ __all__ = [
     "ProductCreate", "ProductUpdate", "ProductOut", "PaginatedProducts",
     "ProductOptionIn", "ProductOptionOut", "ProductOptionValueIn", "ProductOptionValueOut",
     "ProductVariantOut",
+    "VariantStockUpdate", "BulkVariantItem", "BulkVariantStockUpdate",
     "CartItemAdd", "CartItemUpdate", "CartItemOut", "CartOut", "GuestCartCreate",
     "OrderCreate", "GuestOrderCreate", "OrderItemOut", "OrderOut",
     "OrderStatusUpdate", "PaginatedOrders",

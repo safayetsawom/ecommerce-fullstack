@@ -93,3 +93,20 @@ class PaginatedProducts(BaseModel):
     page: int
     page_size: int
     items: List[ProductOut]
+
+
+# ---------- Admin: variant-level updates ----------
+
+class VariantStockUpdate(BaseModel):
+    stock: int = Field(ge=0)
+    is_active: Optional[bool] = None
+
+
+class BulkVariantItem(BaseModel):
+    variant_id: int
+    stock: int = Field(ge=0)
+    is_active: bool = True
+
+
+class BulkVariantStockUpdate(BaseModel):
+    variants: List[BulkVariantItem]
