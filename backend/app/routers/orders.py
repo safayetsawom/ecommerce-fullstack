@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal
 from typing import Optional
-import uuid
 
 from app.database import get_db
 from app.models.order import Order, OrderItem
@@ -13,17 +12,14 @@ from app.models.product_option import ProductOptionValue
 from app.models.user import User
 from app.schemas.order import (
     OrderCreate, GuestOrderCreate, OrderOut, OrderStatusUpdate,
-    PaginatedOrders, VALID_STATUSES,
+    PaginatedOrders, VALID_STATUSES, normalize_phone,
 )
 from app.routers.auth import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
-GUEST_HEADER = "X-Guest-Token"
-
 
 def _variant_options_text(variant: ProductVariant) -> str:
-    """Build a snapshot label like 'M / Black' from a variant's option values."""
     pairs = []
     for link in variant.option_values:
         ov = link.option_value
@@ -50,7 +46,7 @@ def _serialize_order(order: Order) -> dict:
         "id": order.id,
         "user_id": order.user_id,
         "guest_email": order.guest_email,
-        "guest_phone": order.guest_phone,
+        "shipping_phone": order.shipping_phone,
         "status": order.status,
         "total_price": order.total_price,
         "shipping_address": order.shipping_address,
@@ -65,6 +61,17 @@ def _has_enough_stock(product: Product, variant: ProductVariant, qty: int) -> bo
     return variant.stock >= qty
 
 
+def _cart_eager_loads():
+    """Shared eager-load chain for cart items — keeps authed and guest paths identical."""
+    return [
+        joinedload(CartItem.variant).joinedload(ProductVariant.product),
+        joinedload(CartItem.variant)
+            .joinedload(ProductVariant.option_values)
+            .joinedload(ProductVariantOptionValue.option_value)
+            .joinedload(ProductOptionValue.option),
+    ]
+
+
 def _checkout(
     db: Session,
     *,
@@ -72,18 +79,9 @@ def _checkout(
     user_id: Optional[int],
     guest_token: Optional[str],
     guest_email: Optional[str],
-    guest_phone: Optional[str],
+    shipping_phone: str,
     shipping_address: str,
 ) -> Order:
-    """
-    Atomic order creation:
-      1. Re-validate stock for every cart item.
-      2. Create the Order + OrderItem rows (snapshotting name/options/price).
-      3. Decrement variant stock.
-      4. Clear the cart.
-    All in one transaction — if anything fails, nothing is written.
-    """
-    # 1. Stock validation
     for item in cart_items:
         variant = item.variant
         product = variant.product
@@ -98,18 +96,17 @@ def _checkout(
                 detail=f"Only {variant.stock} of '{product.name}' ({_variant_options_text(variant)}) in stock",
             )
 
-    # 2. Create order
     order = Order(
         user_id=user_id,
         guest_token=guest_token,
         guest_email=guest_email,
-        guest_phone=guest_phone,
+        shipping_phone=shipping_phone,
         status="pending",
         total_price=Decimal("0"),
         shipping_address=shipping_address,
     )
     db.add(order)
-    db.flush()  # assigns order.id
+    db.flush()
 
     total = Decimal("0")
     for item in cart_items:
@@ -123,18 +120,16 @@ def _checkout(
             product_id=product.id,
             variant_id=variant.id,
             product_name=product.name,
-            options_text=_variant_options_text(variant),   # snapshot
-            unit_price=product.price,                       # snapshot
+            options_text=_variant_options_text(variant),
+            unit_price=product.price,
             quantity=item.quantity,
         ))
 
-        # 3. Decrement variant stock
         if not product.is_unlimited_stock:
             variant.stock -= item.quantity
 
     order.total_price = total
 
-    # 4. Clear cart
     if user_id is not None:
         db.query(CartItem).filter(CartItem.user_id == user_id).delete(synchronize_session=False)
     else:
@@ -151,16 +146,14 @@ def create_order(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    try:
+        phone = normalize_phone(payload.shipping_phone)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     cart_items = (
         db.query(CartItem)
-        .options(
-            joinedload(CartItem.variant)
-                .joinedload(ProductVariant.product),
-            joinedload(CartItem.variant)
-                .joinedload(ProductVariant.option_values)
-                .joinedload(ProductVariantOptionValue.option_value)
-                .joinedload(ProductOptionValue.option),
-        )
+        .options(*_cart_eager_loads())
         .filter(CartItem.user_id == user.id)
         .all()
     )
@@ -173,7 +166,7 @@ def create_order(
         user_id=user.id,
         guest_token=None,
         guest_email=None,
-        guest_phone=None,
+        shipping_phone=phone,
         shipping_address=payload.shipping_address,
     )
     return _serialize_order(order)
@@ -184,16 +177,14 @@ def create_guest_order(
     payload: GuestOrderCreate,
     db: Session = Depends(get_db),
 ):
+    try:
+        phone = normalize_phone(payload.shipping_phone)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     cart_items = (
         db.query(CartItem)
-        .options(
-            joinedload(CartItem.variant)
-                .joinedload(ProductVariant.product),
-            joinedload(CartItem.variant)
-                .joinedload(ProductVariant.option_values)
-                .joinedload(ProductVariantOptionValue.option_value)
-                .joinedload(ProductOptionValue.option),
-        )
+        .options(*_cart_eager_loads())
         .filter(CartItem.guest_token == payload.guest_token)
         .all()
     )
@@ -206,7 +197,7 @@ def create_guest_order(
         user_id=None,
         guest_token=payload.guest_token,
         guest_email=payload.guest_email,
-        guest_phone=payload.guest_phone,
+        shipping_phone=phone,
         shipping_address=payload.shipping_address,
     )
     return _serialize_order(order)
