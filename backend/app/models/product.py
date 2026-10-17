@@ -13,6 +13,7 @@ class Product(Base):
     price = Column(Numeric(10, 2), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_unlimited_stock = Column(Boolean, default=False, nullable=False)
+    image_url = Column(String, nullable=True)
 
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False, index=True)
     category = relationship("Category")

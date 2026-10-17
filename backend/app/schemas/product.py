@@ -109,3 +109,9 @@ class BulkVariantItem(BaseModel):
 
 class BulkVariantStockUpdate(BaseModel):
     variants: List[BulkVariantItem]
+    
+ProductOptionValueOut.model_rebuild()
+ProductOptionOut.model_rebuild()
+ProductVariantOut.model_rebuild()
+ProductOut.model_rebuild()
+PaginatedProducts.model_rebuild()

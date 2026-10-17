@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 
@@ -33,5 +33,10 @@ class CartOut(BaseModel):
 
 
 class GuestCartCreate(BaseModel):
-    """Returned to the client the first time they act as a guest."""
     guest_token: str
+
+
+# Pydantic 2.13 requires explicit rebuilds when models reference each other
+# across module boundaries (FastAPI passes these through TypeAdapter).
+CartItemOut.model_rebuild()
+CartOut.model_rebuild()

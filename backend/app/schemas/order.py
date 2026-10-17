@@ -1,13 +1,17 @@
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import BaseModel, Field, EmailStr
 from decimal import Decimal
 from typing import List, Optional
 from datetime import datetime
+import re
 
 VALID_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled"]
 PHONE_REGEX = r"^\+?[0-9]{7,15}$"
 
 
-def _normalize_phone(v: str) -> str:
+def normalize_phone(v: str) -> str:
+    """Strip separators and validate the phone pattern. Raises ValueError on failure."""
+    if not isinstance(v, str):
+        raise ValueError("Phone must be a string")
     digits_only = re.sub(r"[\s\-()]", "", v)
     if not re.match(PHONE_REGEX, digits_only):
         raise ValueError("Invalid phone number")
@@ -16,21 +20,15 @@ def _normalize_phone(v: str) -> str:
 
 class OrderCreate(BaseModel):
     shipping_address: str = Field(min_length=5, max_length=500)
+    shipping_phone: str = Field(min_length=7, max_length=20)
+
 
 class GuestOrderCreate(BaseModel):
     guest_token: str = Field(min_length=8, max_length=64)
     guest_email: Optional[EmailStr] = None
-    shipping_phone: str
+    shipping_phone: str = Field(min_length=7, max_length=20)
     shipping_address: str = Field(min_length=5, max_length=500)
 
-    @field_validator("guest_phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        import re
-        digits_only = re.sub(r"[\s\-()]", "", v)
-        if not re.match(PHONE_REGEX, digits_only):
-            raise ValueError("Invalid phone number")
-        return digits_only
 
 class OrderItemOut(BaseModel):
     id: int
@@ -47,7 +45,7 @@ class OrderOut(BaseModel):
     id: int
     user_id: Optional[int]
     guest_email: Optional[str]
-    guest_phone: Optional[str]
+    shipping_phone: str
     status: str
     total_price: Decimal
     shipping_address: str
@@ -56,11 +54,17 @@ class OrderOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
 class OrderStatusUpdate(BaseModel):
     status: str
+
 
 class PaginatedOrders(BaseModel):
     total: int
     page: int
     page_size: int
     items: List[OrderOut]
+
+OrderItemOut.model_rebuild()
+OrderOut.model_rebuild()
+PaginatedOrders.model_rebuild()
