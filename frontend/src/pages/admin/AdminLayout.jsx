@@ -1,23 +1,28 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
 export default function AdminLayout() {
-  const tabStyle = ({ isActive }) => ({
-    padding: '8px 16px',
-    background: isActive ? '#0066cc' : '#fff',
-    color: isActive ? '#fff' : '#222',
-    borderRadius: 4,
-    textDecoration: 'none',
-    border: '1px solid #ccc',
-  })
+  const tabClass = ({ isActive }) =>
+    `px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+      isActive
+        ? 'bg-brand-600 text-white'
+        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+    }`
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <h1>Admin</h1>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        <NavLink to="/admin/products" style={tabStyle}>Products</NavLink>
-        <NavLink to="/admin/categories" style={tabStyle}>Categories</NavLink>
-        <NavLink to="/admin/orders" style={tabStyle}>Orders</NavLink>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Admin</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Manage your store — products, categories, and orders.
+        </p>
       </div>
+
+      <div className="flex flex-wrap gap-2 mb-8">
+        <NavLink to="/admin/products" className={tabClass}>Products</NavLink>
+        <NavLink to="/admin/categories" className={tabClass}>Categories</NavLink>
+        <NavLink to="/admin/orders" className={tabClass}>Orders</NavLink>
+      </div>
+
       <Outlet />
     </div>
   )

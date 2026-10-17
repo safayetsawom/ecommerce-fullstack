@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
+import { Button, Card, Input } from '../../components/ui'
 
 export default function AdminCategories() {
   const [categories, setCategories] = useState([])
@@ -7,23 +8,26 @@ export default function AdminCategories() {
   const [slug, setSlug] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   function load() {
-    api.get('/categories/').then(setCategories)
+    setLoading(true)
+    api.get('/categories/')
+      .then(setCategories)
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
 
-  // Auto-generate slug from name as you type (only if user hasn't overridden it)
+  function slugify(s) {
+    return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  }
+
   function handleNameChange(v) {
     setName(v)
     if (!slug || slug === slugify(name)) {
       setSlug(slugify(v))
     }
-  }
-
-  function slugify(s) {
-    return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   }
 
   async function create(e) {
@@ -54,36 +58,76 @@ export default function AdminCategories() {
 
   return (
     <div>
-      <h2>Categories</h2>
-      <form onSubmit={create} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input placeholder="Name" required value={name} onChange={(e) => handleNameChange(e.target.value)} style={{ padding: 8 }} />
-        <input placeholder="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} style={{ padding: 8 }} />
-        <button type="submit" disabled={busy}>{busy ? 'Creating...' : 'Create'}</button>
-      </form>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Categories</h2>
 
-      <table style={{ width: '100%', background: '#fff', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#fafafa', textAlign: 'left' }}>
-            <th style={{ padding: 10 }}>ID</th>
-            <th style={{ padding: 10 }}>Name</th>
-            <th style={{ padding: 10 }}>Slug</th>
-            <th style={{ padding: 10 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {categories.map((c) => (
-            <tr key={c.id} style={{ borderTop: '1px solid #eee' }}>
-              <td style={{ padding: 10 }}>{c.id}</td>
-              <td style={{ padding: 10 }}>{c.name}</td>
-              <td style={{ padding: 10 }}>{c.slug}</td>
-              <td style={{ padding: 10 }}>
-                <button onClick={() => remove(c)}>Delete</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <Card className="p-4 mb-6">
+        <form onSubmit={create} className="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <Input
+            label="Name"
+            placeholder="Electronics"
+            required
+            value={name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            className="flex-1"
+          />
+          <Input
+            label="Slug"
+            placeholder="electronics"
+            required
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Creating...' : 'Create'}
+          </Button>
+        </form>
+        {error && (
+          <div className="mt-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+      </Card>
+
+      <Card className="overflow-hidden">
+        {loading ? (
+          <div className="p-6 space-y-3 animate-pulse">
+            <div className="h-10 bg-gray-100 rounded" />
+            <div className="h-10 bg-gray-100 rounded" />
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="p-12 text-center">
+            <p className="text-sm text-gray-500">No categories yet.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3">ID</th>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Slug</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {categories.map((c) => (
+                  <tr key={c.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-500">{c.id}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
+                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{c.slug}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => remove(c)}>
+                        Delete
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   )
 }

@@ -4,8 +4,6 @@ from typing import Optional, List
 from datetime import datetime
 
 
-# ---------- Options ----------
-
 class ProductOptionValueIn(BaseModel):
     value: str = Field(min_length=1, max_length=50)
     position: int = 0
@@ -34,8 +32,6 @@ class ProductOptionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ---------- Variants ----------
-
 class ProductVariantOut(BaseModel):
     id: int
     stock: int
@@ -44,8 +40,6 @@ class ProductVariantOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
-# ---------- Product: create ----------
 
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -56,8 +50,6 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = Field(default=None, max_length=500)
     options: List[ProductOptionIn] = []
 
-
-# ---------- Product: update ----------
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -70,8 +62,6 @@ class ProductUpdate(BaseModel):
     options: Optional[List[ProductOptionIn]] = None
 
 
-# ---------- Product: read ----------
-
 class ProductOut(BaseModel):
     id: int
     name: str
@@ -79,6 +69,7 @@ class ProductOut(BaseModel):
     price: Decimal
     is_active: bool
     is_unlimited_stock: bool
+    image_url: Optional[str]
     category_id: int
     created_at: datetime
     options: List[ProductOptionOut] = []
@@ -94,8 +85,6 @@ class PaginatedProducts(BaseModel):
     items: List[ProductOut]
 
 
-# ---------- Admin: variant-level updates ----------
-
 class VariantStockUpdate(BaseModel):
     stock: int = Field(ge=0)
     is_active: Optional[bool] = None
@@ -109,7 +98,8 @@ class BulkVariantItem(BaseModel):
 
 class BulkVariantStockUpdate(BaseModel):
     variants: List[BulkVariantItem]
-    
+
+
 ProductOptionValueOut.model_rebuild()
 ProductOptionOut.model_rebuild()
 ProductVariantOut.model_rebuild()
