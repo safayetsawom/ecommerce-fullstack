@@ -141,7 +141,12 @@ export default function Cart() {
                   >
                     {item.product_name}
                   </Link>
-                  <div className="text-sm text-gray-500">
+                  {item.options_text && item.options_text !== 'Default' && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {item.options_text}
+                    </div>
+                  )}
+                  <div className="text-sm text-gray-500 mt-0.5">
                     ${Number(item.unit_price).toFixed(2)} each
                   </div>
                 </div>
