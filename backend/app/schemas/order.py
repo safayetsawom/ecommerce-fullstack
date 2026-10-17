@@ -65,6 +65,7 @@ class PaginatedOrders(BaseModel):
     page_size: int
     items: List[OrderOut]
 
+
 OrderItemOut.model_rebuild()
 OrderOut.model_rebuild()
 PaginatedOrders.model_rebuild()
