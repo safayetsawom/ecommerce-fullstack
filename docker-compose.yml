@@ -26,14 +26,12 @@ services:
       SECRET_KEY: change-me-in-production-please
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+
   frontend:
     build:
       context: ./frontend

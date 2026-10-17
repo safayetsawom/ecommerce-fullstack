@@ -44,7 +44,4 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ecommerce_test
           SECRET_KEY: test-secret-key
-          CLOUDINARY_CLOUD_NAME: test-cloud
-          CLOUDINARY_API_KEY: test-key
-          CLOUDINARY_API_SECRET: test-secret
         run: uv run pytest

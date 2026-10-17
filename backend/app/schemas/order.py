@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field, EmailStr, field_validator
 from decimal import Decimal
 from typing import List, Optional
 from datetime import datetime
-import re
 
 VALID_STATUSES = ["pending", "paid", "shipped", "delivered", "cancelled"]
 PHONE_REGEX = r"^\+?[0-9]{7,15}$"
@@ -17,13 +16,6 @@ def _normalize_phone(v: str) -> str:
 
 class OrderCreate(BaseModel):
     shipping_address: str = Field(min_length=5, max_length=500)
-    shipping_phone: str
-
-    @field_validator("shipping_phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        return _normalize_phone(v)
-
 
 class GuestOrderCreate(BaseModel):
     guest_token: str = Field(min_length=8, max_length=64)
@@ -31,11 +23,14 @@ class GuestOrderCreate(BaseModel):
     shipping_phone: str
     shipping_address: str = Field(min_length=5, max_length=500)
 
-    @field_validator("shipping_phone")
+    @field_validator("guest_phone")
     @classmethod
     def validate_phone(cls, v: str) -> str:
-        return _normalize_phone(v)
-
+        import re
+        digits_only = re.sub(r"[\s\-()]", "", v)
+        if not re.match(PHONE_REGEX, digits_only):
+            raise ValueError("Invalid phone number")
+        return digits_only
 
 class OrderItemOut(BaseModel):
     id: int
@@ -52,7 +47,7 @@ class OrderOut(BaseModel):
     id: int
     user_id: Optional[int]
     guest_email: Optional[str]
-    shipping_phone: str
+    guest_phone: Optional[str]
     status: str
     total_price: Decimal
     shipping_address: str
@@ -61,10 +56,8 @@ class OrderOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
 class OrderStatusUpdate(BaseModel):
     status: str
-
 
 class PaginatedOrders(BaseModel):
     total: int

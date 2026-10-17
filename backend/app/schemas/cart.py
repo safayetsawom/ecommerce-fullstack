@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from decimal import Decimal
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 
 
@@ -33,4 +33,5 @@ class CartOut(BaseModel):
 
 
 class GuestCartCreate(BaseModel):
+    """Returned to the client the first time they act as a guest."""
     guest_token: str

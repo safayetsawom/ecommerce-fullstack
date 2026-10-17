@@ -11,7 +11,7 @@ from app.models.product_variant import ProductVariant, ProductVariantOptionValue
 from app.models.product_option import ProductOptionValue, ProductOption
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemUpdate, CartOut, GuestCartCreate
-from app.core.security import decode_access_token
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
@@ -24,8 +24,19 @@ def has_enough_stock(product: Product, variant: ProductVariant, requested_qty: i
     return variant.stock >= requested_qty
 
 
-def _get_owner(db: Session, token: Optional[str], guest_token: Optional[str]) -> dict:
+def _get_owner(
+    db: Session,
+    token: Optional[str],
+    guest_token: Optional[str],
+) -> dict:
+    """
+    Returns {'user_id': X, 'guest_token': None} for authed users,
+    or {'user_id': None, 'guest_token': Y} for guests.
+    Raises 401 if neither is present.
+    """
     if token:
+        # Resolve user from token
+        from app.core.security import decode_access_token
         payload = decode_access_token(token)
         if payload is None:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -102,6 +113,7 @@ def _build_cart(db: Session, owner: dict) -> dict:
 
 @router.post("/guest", response_model=GuestCartCreate, status_code=status.HTTP_201_CREATED)
 def create_guest_cart():
+    """Generate a fresh guest token. Client stores it and sends it as X-Guest-Token."""
     return {"guest_token": uuid.uuid4().hex}
 
 
@@ -111,7 +123,10 @@ def get_cart(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
     return _build_cart(db, owner)
 
 
@@ -122,7 +137,10 @@ def add_to_cart(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
 
     variant = (
         db.query(ProductVariant)
@@ -162,7 +180,10 @@ def update_cart_item(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
 
     item = (
         _owner_filter(db.query(CartItem), owner)
@@ -190,7 +211,10 @@ def remove_cart_item(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
 
     item = _owner_filter(db.query(CartItem), owner).filter(CartItem.id == item_id).first()
     if not item:
@@ -207,7 +231,13 @@ def clear_cart(
     authorization: Optional[str] = Header(None),
     x_guest_token: Optional[str] = Header(None, alias=GUEST_HEADER),
 ):
-    owner = _get_owner(db, _extract_token(authorization), x_guest_token)
-    _owner_filter(db.query(CartItem), owner).delete(synchronize_session=False)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    owner = _get_owner(db, token, x_guest_token)
+
+    q = db.query(CartItem)
+    q = _owner_filter(q, owner)
+    q.delete(synchronize_session=False)
     db.commit()
     return None

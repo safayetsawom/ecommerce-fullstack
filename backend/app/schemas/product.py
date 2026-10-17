@@ -79,7 +79,6 @@ class ProductOut(BaseModel):
     price: Decimal
     is_active: bool
     is_unlimited_stock: bool
-    image_url: Optional[str]
     category_id: int
     created_at: datetime
     options: List[ProductOptionOut] = []
